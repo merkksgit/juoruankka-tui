@@ -210,7 +210,7 @@ export async function startApp(config) {
       );
     } else if (isRead) {
       term.writeLine(row,
-        `   ${term.gray(title)} ${term.dim("│")} ${term.gray(source)} ${term.dim("│")} ${term.gray(time)}`
+        `   ${term.dimWhite(title)} ${term.dim("│")} ${term.dimWhite(source)} ${term.dim("│")} ${term.dimWhite(time)}`
       );
     } else {
       term.writeLine(row,

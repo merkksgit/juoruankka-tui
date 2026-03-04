@@ -23,6 +23,7 @@ export const term = {
   orange: (text) => `\x1b[38;5;208m${text}\x1b[0m`,
   gray: (text) => `\x1b[37m${text}\x1b[0m`,
   dim: (text) => `\x1b[90m${text}\x1b[0m`,
+  dimWhite: (text) => `\x1b[2;37m${text}\x1b[0m`,
   white: (text) => `\x1b[37m${text}\x1b[0m`,
   bold: (text) => `\x1b[1m${text}\x1b[0m`,
   boldYellow: (text) => `\x1b[1;33m${text}\x1b[0m`,
