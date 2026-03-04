@@ -1,7 +1,33 @@
+const TIMEOUT = 15000;
+
+export class TokenExpiredError extends Error {
+  constructor() {
+    super("Istunto vanhentunut");
+    this.name = "TokenExpiredError";
+  }
+}
+
+function timeoutSignal() {
+  return AbortSignal.timeout(TIMEOUT);
+}
+
+function wrapFetchError(err) {
+  if (err.name === "TimeoutError" || err.name === "AbortError") {
+    throw new Error("Yhteys aikakatkaistiin");
+  }
+  throw err;
+}
+
 export async function verifyToken(server, token) {
-  const res = await fetch(`${server}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${server}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
 
   if (!res.ok) return null;
   const data = await res.json();
@@ -11,11 +37,17 @@ export async function verifyToken(server, token) {
 }
 
 export async function login(server, email, password) {
-  const res = await fetch(`${server}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  let res;
+  try {
+    res = await fetch(`${server}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
 
   const data = await res.json();
   if (data.status !== "ok") {
@@ -26,9 +58,17 @@ export async function login(server, email, password) {
 }
 
 export async function fetchFeeds(server, token) {
-  const res = await fetch(`${server}/api/feeds/sync`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${server}/api/feeds/sync`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
+
+  if (res.status === 401) throw new TokenExpiredError();
 
   const data = await res.json();
   if (data.status !== "ok") {
@@ -39,11 +79,19 @@ export async function fetchFeeds(server, token) {
 }
 
 export async function fetchArticles(server, feeds) {
-  const res = await fetch(`${server}/api/articles`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ feeds }),
-  });
+  let res;
+  try {
+    res = await fetch(`${server}/api/articles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feeds }),
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
+
+  if (res.status === 401) throw new TokenExpiredError();
 
   const data = await res.json();
   if (data.status !== "ok") {

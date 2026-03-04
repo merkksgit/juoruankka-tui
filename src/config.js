@@ -54,4 +54,32 @@ export function saveCachedToken(token) {
   chmodSync(CONFIG_PATH, 0o600);
 }
 
+// --- Read history ---
+
+const READ_PATH = join(CONFIG_DIR, "read.json");
+const MAX_READ_HISTORY = 5000;
+
+export function loadReadHistory() {
+  if (!existsSync(READ_PATH)) return new Set();
+  try {
+    const raw = readFileSync(READ_PATH, "utf-8");
+    const ids = JSON.parse(raw);
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveReadArticle(id) {
+  ensureConfigDir();
+  const history = loadReadHistory();
+  history.add(id);
+  // Trim to max size (keep newest entries)
+  let ids = [...history];
+  if (ids.length > MAX_READ_HISTORY) {
+    ids = ids.slice(ids.length - MAX_READ_HISTORY);
+  }
+  writeFileSync(READ_PATH, JSON.stringify(ids) + "\n", "utf-8");
+}
+
 export { CONFIG_PATH, CONFIG_DIR, DEFAULT_SERVER };

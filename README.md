@@ -1,15 +1,15 @@
-# Juoruankka TUI
+<p align="center">
+  <img src="images/JUORUANKKA_TUI_LOGO.png" alt="Juoruankka TUI" width="800">
+</p>
 
-A terminal UI client for [Juoruankka](https://juoruankka.com), a self-hosted RSS news aggregator. Browse your feeds, navigate by topic, and open articles in your browser -- all from the terminal.
+<p align="center">
+  A terminal UI client for <a href="https://juoruankka.com">Juoruankka</a>, a self-hosted RSS news aggregator.<br>
+  Browse your feeds, navigate by topic, and open articles in your browser — all from the terminal.
+</p>
 
-```
-     ██╗██╗   ██╗ ██████╗ ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗██╗  ██╗██╗  ██╗ █████╗
-     ██║██║   ██║██╔═══██╗██╔══██╗██║   ██║██╔══██╗████╗  ██║██║ ██╔╝██║ ██╔╝██╔══██╗
-     ██║██║   ██║██║   ██║██████╔╝██║   ██║███████║██╔██╗ ██║█████╔╝ █████╔╝ ███████║
-██   ██║██║   ██║██║   ██║██╔══██╗██║   ██║██╔══██║██║╚██╗██║██╔═██╗ ██╔═██╗ ██╔══██║
-╚█████╔╝╚██████╔╝╚██████╔╝██║  ██║╚██████╔╝██║  ██║██║ ╚████║██║  ██╗██║  ██╗██║  ██║
- ╚════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
-```
+<p align="center">
+  <img src="images/PREVIEW.png" alt="Preview" width="800">
+</p>
 
 ## Requirements
 
@@ -68,6 +68,10 @@ npm start
 | `G`           | Jump to bottom          |
 | `Enter` / `l` | Select topic / Open URL |
 | `q` / `h`     | Go back / Quit          |
+| `r`           | Refresh articles        |
+| `/`           | Search articles         |
+| `Esc`         | Clear search filter     |
+| `?`           | Show help               |
 | `Ctrl+C`      | Force quit              |
 
 ## How It Works
@@ -84,23 +88,10 @@ The TUI connects to the Juoruankka API using credentials from the config file. O
 
 - Pure Node.js with no frameworks -- uses raw ANSI escape sequences for rendering
 - Alternate screen buffer for clean terminal state on exit
-- Differential rendering (only changed rows are redrawn) for flicker-free navigation
 - Single runtime dependency: `open` (for launching URLs in browser)
 - Articles are deduplicated across feeds to prevent repeated entries
-
-## Project Structure
-
-```
-cli/
-├── index.js          # Entry point, config loading
-├── package.json
-├── src/
-│   ├── App.js        # Main app logic, screens, input handling
-│   ├── api.js        # API client (login, feeds, articles)
-│   ├── config.js     # Config file management (~/.config/juoruankka-tui/)
-│   ├── prompt.js     # Interactive credential prompts
-│   └── term.js       # ANSI terminal helpers
-```
+- Read article tracking persisted locally
+- 15s fetch timeouts with automatic token expiry detection
 
 ## License
 

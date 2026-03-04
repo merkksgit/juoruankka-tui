@@ -1,6 +1,6 @@
 import { term } from "./term.js";
-import { login, verifyToken, fetchFeeds, fetchArticles } from "./api.js";
-import { loadCachedToken, saveCachedToken } from "./config.js";
+import { login, verifyToken, fetchFeeds, fetchArticles, TokenExpiredError } from "./api.js";
+import { loadCachedToken, saveCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
 
@@ -46,6 +46,29 @@ const TOPIC_ORDER = [
   "github",
 ];
 
+function relativeTime(timestamp) {
+  if (!timestamp) return "";
+  const now = Date.now();
+  const diff = now - timestamp;
+  if (diff < 0) return "nyt";
+
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "nyt";
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}vk`;
+
+  const months = Math.floor(days / 30);
+  return `${months}kk`;
+}
+
 export async function startApp(config) {
   // Setup terminal
   term.enterAltScreen();
@@ -66,16 +89,22 @@ export async function startApp(config) {
 
   // State
   let screen = "loading";
+  let previousScreen = null;
+  let errorMessage = null;
   let token = null;
   let user = null;
   let feeds = [];
   let topics = [];
+  let allArticles = [];
   let articles = [];
   let selectedIndex = 0;
   let scrollOffset = 0;
   let selectedTopic = null;
+  let searchQuery = "";
+  let readHistory = loadReadHistory();
 
-  // Render functions
+  // --- Render functions ---
+
   function drawHeader() {
     const header = user
       ? `${term.boldYellow("Juoruankka")} ${term.dim("—")} ${term.gray(user.displayName)}`
@@ -106,17 +135,9 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.1.0";
-    term.writeLine(
-      startRow + LOGO.length + 1,
-      " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) +
-        term.gray(version),
-    );
-    term.writeLine(
-      startRow + LOGO.length + 3,
-      " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) +
-        term.cyan(message),
-    );
+    const version = "v0.2.0";
+    term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
+    term.writeLine(startRow + LOGO.length + 3, " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) + term.cyan(message));
   }
 
   function drawLoading(message) {
@@ -125,10 +146,18 @@ export async function startApp(config) {
     term.writeLine(2, ` ${term.cyan(message)}`);
   }
 
+  function drawError() {
+    term.clearScreen();
+    drawHeader();
+    term.writeLine(2, ` ${term.cyan(`Virhe: ${errorMessage}`)}`);
+    drawStatusBar("q/h: back");
+  }
+
   // --- Topic screen ---
 
   function drawTopicRow(i) {
-    const name = TOPIC_NAMES[topics[i]] || topics[i];
+    const topicKey = topics[i];
+    const name = TOPIC_NAMES[topicKey] || topicKey;
     const isSelected = i === selectedIndex;
     const line = isSelected
       ? ` ${term.boldYellow(`▸ ${name}`)}`
@@ -146,7 +175,7 @@ export async function startApp(config) {
       drawTopicRow(i);
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: select  q: quit");
+    drawStatusBar("j/k: navigate  Enter/l: select  ?: help  q: quit");
   }
 
   // --- Article screen ---
@@ -165,6 +194,7 @@ export async function startApp(config) {
 
     const article = articles[ai];
     const isSelected = ai === selectedIndex;
+    const isRead = readHistory.has(article.id);
     const rawTitle = article.title || "Untitled";
     const title =
       rawTitle.length > maxTitle
@@ -172,17 +202,19 @@ export async function startApp(config) {
         : rawTitle;
 
     const source = article.source || "";
-    const date = article.date || "";
+    const time = relativeTime(article.timestamp);
 
     if (isSelected) {
-      term.writeLine(
-        row,
-        ` ${term.boldYellow("▸")} ${term.boldYellow(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`,
+      term.writeLine(row,
+        ` ${term.boldYellow("▸")} ${term.boldYellow(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(time)}`
+      );
+    } else if (isRead) {
+      term.writeLine(row,
+        `   ${term.gray(title)} ${term.dim("│")} ${term.gray(source)} ${term.dim("│")} ${term.gray(time)}`
       );
     } else {
-      term.writeLine(
-        row,
-        `   ${term.white(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`,
+      term.writeLine(row,
+        `   ${term.white(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(time)}`
       );
     }
   }
@@ -190,11 +222,11 @@ export async function startApp(config) {
   function drawArticleHeader() {
     const viewportHeight = term.rows - 5;
     const topicName = TOPIC_NAMES[selectedTopic] || selectedTopic;
-    const countInfo =
-      articles.length > viewportHeight
-        ? ` ${term.gray(`(${articles.length}) [${scrollOffset + 1}-${Math.min(scrollOffset + viewportHeight, articles.length)}/${articles.length}]`)}`
-        : ` ${term.gray(`(${articles.length})`)}`;
-    term.writeLine(2, ` ${term.boldYellow(topicName)}${countInfo}`);
+    const filterInfo = searchQuery ? ` ${term.cyan(`"${searchQuery}"`)}` : "";
+    const countInfo = articles.length > viewportHeight
+      ? ` ${term.gray(`(${articles.length}) [${scrollOffset + 1}-${Math.min(scrollOffset + viewportHeight, articles.length)}/${articles.length}]`)}`
+      : ` ${term.gray(`(${articles.length})`)}`;
+    term.writeLine(2, ` ${term.boldYellow(topicName)}${countInfo}${filterInfo}`);
   }
 
   function drawArticlesFull() {
@@ -225,132 +257,305 @@ export async function startApp(config) {
       }
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: open  g/G: top/bottom  q/h: back");
+    drawStatusBar("j/k: navigate  Enter/l: open  /: search  r: refresh  ?: help  q/h: back");
   }
 
-  // Input handler
+  // --- Help screen ---
+
+  function drawHelp() {
+    term.clearScreen();
+    drawHeader();
+    term.writeLine(2, ` ${term.boldYellow("Pikanäppäimet")}`);
+
+    const bindings = [
+      ["j / ↓", "Seuraava"],
+      ["k / ↑", "Edellinen"],
+      ["g", "Ensimmäinen"],
+      ["G", "Viimeinen"],
+      ["Enter / l", "Valitse / Avaa"],
+      ["q / h", "Takaisin"],
+      ["r", "Päivitä artikkelit"],
+      ["/", "Hae artikkeleita"],
+      ["Esc", "Tyhjennä haku"],
+      ["?", "Näytä ohje"],
+      ["Ctrl+C", "Poistu"],
+    ];
+
+    for (let i = 0; i < bindings.length; i++) {
+      const [key, desc] = bindings[i];
+      term.writeLine(4 + i, `   ${term.cyan(key.padEnd(14))} ${term.white(desc)}`);
+    }
+
+    drawStatusBar("q/?/Esc: back");
+  }
+
+  // --- Search bar ---
+
+  function drawSearchBar() {
+    const row = term.rows - 1;
+    term.writeLine(row, ` ${term.orange("/")}${term.white(searchQuery)}${term.dim("█")}`);
+  }
+
+  function applySearchFilter() {
+    if (!searchQuery) {
+      articles = allArticles;
+    } else {
+      const q = searchQuery.toLowerCase();
+      articles = allArticles.filter((a) =>
+        (a.title || "").toLowerCase().includes(q) ||
+        (a.source || "").toLowerCase().includes(q)
+      );
+    }
+    selectedIndex = 0;
+    scrollOffset = 0;
+  }
+
+  // --- Article loading ---
+
+  async function loadArticles(topic) {
+    screen = "loading";
+    drawLoading("Haetaan artikkeleita...");
+
+    const topicFeeds = topic === "all"
+      ? feeds.filter((f) => f.enabled !== false)
+      : feeds.filter((f) => f.category === topic && f.enabled !== false);
+
+    const feedPayload = topicFeeds.map((f) => ({ url: f.url, name: f.name }));
+    const arts = await fetchArticles(config.server, feedPayload);
+
+    const seen = new Set();
+    const unique = arts.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+    unique.sort((a, b) => b.timestamp - a.timestamp);
+
+    allArticles = unique;
+    searchQuery = "";
+    articles = unique;
+    selectedIndex = 0;
+    scrollOffset = 0;
+    screen = "articles";
+    drawArticlesFull();
+  }
+
+  // --- Re-authentication ---
+
+  async function reauthenticate() {
+    term.showCursor();
+    term.leaveAltScreen();
+    console.log(term.boldYellow("\n  Istunto vanhentunut — kirjaudu uudelleen\n"));
+    const { email, password } = await promptCredentials();
+
+    term.enterAltScreen();
+    term.hideCursor();
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    drawLoading("Kirjaudutaan sisään...");
+
+    const auth = await login(config.server, email, password);
+    saveCachedToken(auth.token);
+    token = auth.token;
+    user = auth.user;
+
+    // Re-fetch feeds with new token
+    const userFeeds = await fetchFeeds(config.server, auth.token);
+    feeds = userFeeds;
+  }
+
+  // --- Input handlers ---
+
+  function handleTopicInput(key) {
+    const prevIndex = selectedIndex;
+
+    if (key === "j" || key === "\x1b[B") {
+      selectedIndex = Math.min(selectedIndex + 1, topics.length - 1);
+    } else if (key === "k" || key === "\x1b[A") {
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (key === "g") {
+      selectedIndex = 0;
+    } else if (key === "G") {
+      selectedIndex = topics.length - 1;
+    } else if (key === "\r" || key === "l") {
+      const topic = topics[selectedIndex];
+      selectedTopic = topic;
+      loadArticles(topic).catch((err) => {
+        if (err instanceof TokenExpiredError) {
+          reauthenticate()
+            .then(() => loadArticles(topic))
+            .catch((e) => { errorMessage = e.message; screen = "error"; drawError(); });
+        } else {
+          errorMessage = err.message;
+          screen = "error";
+          drawError();
+        }
+      });
+      return;
+    } else if (key === "?") {
+      previousScreen = "topics";
+      screen = "help";
+      drawHelp();
+      return;
+    } else if (key === "q") {
+      cleanup();
+      return;
+    }
+
+    if (prevIndex !== selectedIndex) {
+      drawTopicRow(prevIndex);
+      drawTopicRow(selectedIndex);
+    }
+  }
+
+  function handleArticleInput(key) {
+    const prevIndex = selectedIndex;
+    const prevOffset = scrollOffset;
+
+    if (key === "j" || key === "\x1b[B") {
+      selectedIndex = Math.min(selectedIndex + 1, articles.length - 1);
+    } else if (key === "k" || key === "\x1b[A") {
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (key === "g") {
+      selectedIndex = 0;
+    } else if (key === "G") {
+      selectedIndex = articles.length - 1;
+    } else if (key === "\r" || key === "l") {
+      if (articles[selectedIndex]) {
+        const article = articles[selectedIndex];
+        readHistory.add(article.id);
+        saveReadArticle(article.id);
+        drawArticleRow(selectedIndex);
+        open(article.url).catch(() => {});
+      }
+      return;
+    } else if (key === "r") {
+      loadArticles(selectedTopic).catch((err) => {
+        if (err instanceof TokenExpiredError) {
+          reauthenticate()
+            .then(() => loadArticles(selectedTopic))
+            .catch((e) => { errorMessage = e.message; screen = "error"; drawError(); });
+        } else {
+          errorMessage = err.message;
+          screen = "error";
+          drawError();
+        }
+      });
+      return;
+    } else if (key === "\x1b") {
+      // Escape — clear search filter if active
+      if (searchQuery) {
+        searchQuery = "";
+        applySearchFilter();
+        drawArticlesFull();
+      }
+      return;
+    } else if (key === "/") {
+      searchQuery = "";
+      screen = "search";
+      drawSearchBar();
+      return;
+    } else if (key === "?") {
+      previousScreen = "articles";
+      screen = "help";
+      drawHelp();
+      return;
+    } else if (key === "q" || key === "h") {
+      screen = "topics";
+      allArticles = [];
+      articles = [];
+      searchQuery = "";
+      selectedIndex = topics.indexOf(selectedTopic);
+      if (selectedIndex < 0) selectedIndex = 0;
+      drawTopicsFull();
+      return;
+    }
+
+    if (prevIndex !== selectedIndex) {
+      const viewportHeight = term.rows - 5;
+      const half = Math.floor(viewportHeight / 2);
+      if (articles.length > viewportHeight) {
+        scrollOffset = Math.max(0, Math.min(selectedIndex - half, articles.length - viewportHeight));
+      }
+
+      if (scrollOffset !== prevOffset) {
+        for (let vi = 0; vi < viewportHeight; vi++) {
+          drawArticleRow(vi + scrollOffset);
+        }
+      } else {
+        drawArticleRow(prevIndex);
+        drawArticleRow(selectedIndex);
+      }
+
+      if (articles.length > viewportHeight) {
+        drawArticleHeader();
+      }
+    }
+  }
+
+  function handleSearchInput(key) {
+    if (key === "\x1b" || key === "\x1b[A" || key === "\x1b[B") {
+      // Escape or arrow keys — exit search, clear filter
+      searchQuery = "";
+      applySearchFilter();
+      screen = "articles";
+      drawArticlesFull();
+    } else if (key === "\r") {
+      // Enter — confirm search, stay in articles with filter applied
+      screen = "articles";
+      drawArticlesFull();
+    } else if (key === "\x7f" || key === "\b") {
+      // Backspace
+      searchQuery = searchQuery.slice(0, -1);
+      applySearchFilter();
+      drawArticlesFull();
+      drawSearchBar();
+    } else if (key.charCodeAt(0) >= 32 && key.length === 1) {
+      // Printable character
+      searchQuery += key;
+      applySearchFilter();
+      drawArticlesFull();
+      drawSearchBar();
+    }
+  }
+
+  function handleHelpInput(key) {
+    if (key === "q" || key === "?" || key === "\x1b") {
+      screen = previousScreen;
+      if (screen === "topics") drawTopicsFull();
+      else if (screen === "articles") drawArticlesFull();
+    }
+  }
+
+  function handleErrorInput(key) {
+    if (key === "q" || key === "h" || key === "\x1b") {
+      screen = "topics";
+      selectedIndex = topics.indexOf(selectedTopic);
+      if (selectedIndex < 0) selectedIndex = 0;
+      drawTopicsFull();
+    }
+  }
+
+  // Main input dispatcher
   process.stdin.on("data", async (key) => {
     if (key === "\x03") {
       cleanup();
       return;
     }
 
-    if (screen === "topics") {
-      const prevIndex = selectedIndex;
-
-      if (key === "j" || key === "\x1b[B") {
-        selectedIndex = Math.min(selectedIndex + 1, topics.length - 1);
-      } else if (key === "k" || key === "\x1b[A") {
-        selectedIndex = Math.max(selectedIndex - 1, 0);
-      } else if (key === "g") {
-        selectedIndex = 0;
-      } else if (key === "G") {
-        selectedIndex = topics.length - 1;
-      } else if (key === "\r" || key === "l") {
-        const topic = topics[selectedIndex];
-        selectedTopic = topic;
-        selectedIndex = 0;
-        scrollOffset = 0;
-        screen = "loading";
-        drawLoading("Haetaan artikkeleita...");
-
-        try {
-          const topicFeeds =
-            topic === "all"
-              ? feeds.filter((f) => f.enabled !== false)
-              : feeds.filter(
-                  (f) => f.category === topic && f.enabled !== false,
-                );
-
-          const feedPayload = topicFeeds.map((f) => ({
-            url: f.url,
-            name: f.name,
-          }));
-          const arts = await fetchArticles(config.server, feedPayload);
-          // Deduplicate by article id
-          const seen = new Set();
-          const unique = arts.filter((a) => {
-            if (seen.has(a.id)) return false;
-            seen.add(a.id);
-            return true;
-          });
-          unique.sort((a, b) => b.timestamp - a.timestamp);
-          articles = unique;
-          screen = "articles";
-          drawArticlesFull();
-        } catch (err) {
-          drawLoading(`Virhe: ${err.message}`);
-        }
-        return;
-      } else if (key === "q") {
-        cleanup();
-        return;
-      }
-
-      if (prevIndex !== selectedIndex) {
-        // Only redraw the two changed rows
-        drawTopicRow(prevIndex);
-        drawTopicRow(selectedIndex);
-      }
-    } else if (screen === "articles") {
-      const prevIndex = selectedIndex;
-      const prevOffset = scrollOffset;
-
-      if (key === "j" || key === "\x1b[B") {
-        selectedIndex = Math.min(selectedIndex + 1, articles.length - 1);
-      } else if (key === "k" || key === "\x1b[A") {
-        selectedIndex = Math.max(selectedIndex - 1, 0);
-      } else if (key === "g") {
-        selectedIndex = 0;
-      } else if (key === "G") {
-        selectedIndex = articles.length - 1;
-      } else if (key === "\r" || key === "l") {
-        if (articles[selectedIndex]) {
-          try {
-            await open(articles[selectedIndex].url);
-          } catch {}
-        }
-        return;
-      } else if (key === "q" || key === "h") {
-        screen = "topics";
-        selectedIndex = topics.indexOf(selectedTopic);
-        if (selectedIndex < 0) selectedIndex = 0;
-        drawTopicsFull();
-        return;
-      }
-
-      if (prevIndex !== selectedIndex) {
-        // Recalculate scroll offset
-        const viewportHeight = term.rows - 5;
-        const half = Math.floor(viewportHeight / 2);
-        if (articles.length > viewportHeight) {
-          scrollOffset = Math.max(
-            0,
-            Math.min(selectedIndex - half, articles.length - viewportHeight),
-          );
-        }
-
-        if (scrollOffset !== prevOffset) {
-          // Redraw all visible rows in-place (no clearScreen)
-          for (let vi = 0; vi < viewportHeight; vi++) {
-            drawArticleRow(vi + scrollOffset);
-          }
-        } else {
-          drawArticleRow(prevIndex);
-          drawArticleRow(selectedIndex);
-        }
-
-        if (articles.length > viewportHeight) {
-          drawArticleHeader();
-        }
-      }
-    }
+    if (screen === "topics") handleTopicInput(key);
+    else if (screen === "articles") handleArticleInput(key);
+    else if (screen === "search") handleSearchInput(key);
+    else if (screen === "help") handleHelpInput(key);
+    else if (screen === "error") handleErrorInput(key);
   });
 
   // Redraw on terminal resize
   process.stdout.on("resize", () => {
     if (screen === "topics") drawTopicsFull();
     else if (screen === "articles") drawArticlesFull();
+    else if (screen === "help") drawHelp();
+    else if (screen === "error") drawError();
   });
 
   // Startup — try cached token, prompt for credentials if needed
@@ -390,13 +595,9 @@ export async function startApp(config) {
     const userFeeds = await fetchFeeds(config.server, auth.token);
     feeds = userFeeds;
 
-    const categories = new Set(
-      userFeeds.map((f) => f.category).filter(Boolean),
-    );
-    topics = [
-      "all",
-      ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t)),
-    ];
+    const enabledFeeds = userFeeds.filter((f) => f.enabled !== false);
+    const categories = new Set(enabledFeeds.map((f) => f.category).filter(Boolean));
+    topics = ["all", ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t))];
 
     // Keep splash visible for at least 1.5s
     const elapsed = Date.now() - splashStart;
