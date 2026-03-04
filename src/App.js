@@ -135,7 +135,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.2.0";
+    const version = "v0.2.1";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
     term.writeLine(startRow + LOGO.length + 3, " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) + term.cyan(message));
   }
