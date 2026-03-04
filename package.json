@@ -1,0 +1,16 @@
+{
+  "name": "juoruankka-tui",
+  "version": "0.1.0",
+  "description": "Terminal UI client for Juoruankka RSS aggregator",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "juoruankka": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "open": "^10.1.0"
+  }
+}
