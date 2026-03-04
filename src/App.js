@@ -26,10 +26,24 @@ const TOPIC_NAMES = {
 };
 
 const TOPIC_ORDER = [
-  "all", "paauutiset", "tuoreimmat", "luetuimmat", "kotimaa",
-  "politiikka", "ulkomaat", "talous", "teknologia", "urheilu",
-  "viihde", "tiede", "paakirjoitukset", "kolumnit",
-  "youtube", "podcasts", "blogs", "github",
+  "all",
+  "paauutiset",
+  "tuoreimmat",
+  "luetuimmat",
+  "kotimaa",
+  "politiikka",
+  "ulkomaat",
+  "talous",
+  "teknologia",
+  "urheilu",
+  "viihde",
+  "tiede",
+  "paakirjoitukset",
+  "kolumnit",
+  "youtube",
+  "podcasts",
+  "blogs",
+  "github",
 ];
 
 export async function startApp(config) {
@@ -92,9 +106,17 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.0.1";
-    term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
-    term.writeLine(startRow + LOGO.length + 3, " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) + term.cyan(message));
+    const version = "v0.1.0";
+    term.writeLine(
+      startRow + LOGO.length + 1,
+      " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) +
+        term.gray(version),
+    );
+    term.writeLine(
+      startRow + LOGO.length + 3,
+      " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) +
+        term.cyan(message),
+    );
   }
 
   function drawLoading(message) {
@@ -144,20 +166,23 @@ export async function startApp(config) {
     const article = articles[ai];
     const isSelected = ai === selectedIndex;
     const rawTitle = article.title || "Untitled";
-    const title = rawTitle.length > maxTitle
-      ? rawTitle.slice(0, maxTitle - 1) + "…"
-      : rawTitle;
+    const title =
+      rawTitle.length > maxTitle
+        ? rawTitle.slice(0, maxTitle - 1) + "…"
+        : rawTitle;
 
     const source = article.source || "";
     const date = article.date || "";
 
     if (isSelected) {
-      term.writeLine(row,
-        ` ${term.boldYellow("▸")} ${term.boldYellow(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`
+      term.writeLine(
+        row,
+        ` ${term.boldYellow("▸")} ${term.boldYellow(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`,
       );
     } else {
-      term.writeLine(row,
-        `   ${term.white(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`
+      term.writeLine(
+        row,
+        `   ${term.white(title)} ${term.dim("│")} ${term.blue(source)} ${term.dim("│")} ${term.cyan(date)}`,
       );
     }
   }
@@ -165,9 +190,10 @@ export async function startApp(config) {
   function drawArticleHeader() {
     const viewportHeight = term.rows - 5;
     const topicName = TOPIC_NAMES[selectedTopic] || selectedTopic;
-    const countInfo = articles.length > viewportHeight
-      ? ` ${term.gray(`(${articles.length}) [${scrollOffset + 1}-${Math.min(scrollOffset + viewportHeight, articles.length)}/${articles.length}]`)}`
-      : ` ${term.gray(`(${articles.length})`)}`;
+    const countInfo =
+      articles.length > viewportHeight
+        ? ` ${term.gray(`(${articles.length}) [${scrollOffset + 1}-${Math.min(scrollOffset + viewportHeight, articles.length)}/${articles.length}]`)}`
+        : ` ${term.gray(`(${articles.length})`)}`;
     term.writeLine(2, ` ${term.boldYellow(topicName)}${countInfo}`);
   }
 
@@ -177,7 +203,10 @@ export async function startApp(config) {
     // Calculate scroll
     const half = Math.floor(viewportHeight / 2);
     if (articles.length > viewportHeight) {
-      scrollOffset = Math.max(0, Math.min(selectedIndex - half, articles.length - viewportHeight));
+      scrollOffset = Math.max(
+        0,
+        Math.min(selectedIndex - half, articles.length - viewportHeight),
+      );
     } else {
       scrollOffset = 0;
     }
@@ -226,11 +255,17 @@ export async function startApp(config) {
         drawLoading("Haetaan artikkeleita...");
 
         try {
-          const topicFeeds = topic === "all"
-            ? feeds.filter((f) => f.enabled !== false)
-            : feeds.filter((f) => f.category === topic && f.enabled !== false);
+          const topicFeeds =
+            topic === "all"
+              ? feeds.filter((f) => f.enabled !== false)
+              : feeds.filter(
+                  (f) => f.category === topic && f.enabled !== false,
+                );
 
-          const feedPayload = topicFeeds.map((f) => ({ url: f.url, name: f.name }));
+          const feedPayload = topicFeeds.map((f) => ({
+            url: f.url,
+            name: f.name,
+          }));
           const arts = await fetchArticles(config.server, feedPayload);
           // Deduplicate by article id
           const seen = new Set();
@@ -289,7 +324,10 @@ export async function startApp(config) {
         const viewportHeight = term.rows - 5;
         const half = Math.floor(viewportHeight / 2);
         if (articles.length > viewportHeight) {
-          scrollOffset = Math.max(0, Math.min(selectedIndex - half, articles.length - viewportHeight));
+          scrollOffset = Math.max(
+            0,
+            Math.min(selectedIndex - half, articles.length - viewportHeight),
+          );
         }
 
         if (scrollOffset !== prevOffset) {
@@ -352,8 +390,13 @@ export async function startApp(config) {
     const userFeeds = await fetchFeeds(config.server, auth.token);
     feeds = userFeeds;
 
-    const categories = new Set(userFeeds.map((f) => f.category).filter(Boolean));
-    topics = ["all", ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t))];
+    const categories = new Set(
+      userFeeds.map((f) => f.category).filter(Boolean),
+    );
+    topics = [
+      "all",
+      ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t)),
+    ];
 
     // Keep splash visible for at least 1.5s
     const elapsed = Date.now() - splashStart;
