@@ -1,5 +1,5 @@
 import { term } from "./term.js";
-import { login, verifyToken, fetchFeeds, fetchArticles, TokenExpiredError } from "./api.js";
+import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, TokenExpiredError } from "./api.js";
 import { loadCachedToken, saveCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
@@ -312,16 +312,17 @@ export async function startApp(config) {
 
   // --- Article loading ---
 
-  async function loadArticles(topic) {
+  async function loadArticles(topic, forceRefresh = false) {
     screen = "loading";
-    drawLoading("Haetaan artikkeleita...");
+    drawLoading(forceRefresh ? "Päivitetään syötteitä..." : "Haetaan artikkeleita...");
 
     const topicFeeds = topic === "all"
       ? feeds.filter((f) => f.enabled !== false)
       : feeds.filter((f) => f.category === topic && f.enabled !== false);
 
     const feedPayload = topicFeeds.map((f) => ({ url: f.url, name: f.name }));
-    const arts = await fetchArticles(config.server, feedPayload);
+    const fetch = forceRefresh ? refreshArticles : fetchArticles;
+    const arts = await fetch(config.server, feedPayload);
 
     const seen = new Set();
     const unique = arts.filter((a) => {
@@ -430,10 +431,10 @@ export async function startApp(config) {
       }
       return;
     } else if (key === "r") {
-      loadArticles(selectedTopic).catch((err) => {
+      loadArticles(selectedTopic, true).catch((err) => {
         if (err instanceof TokenExpiredError) {
           reauthenticate()
-            .then(() => loadArticles(selectedTopic))
+            .then(() => loadArticles(selectedTopic, true))
             .catch((e) => { errorMessage = e.message; screen = "error"; drawError(); });
         } else {
           errorMessage = err.message;

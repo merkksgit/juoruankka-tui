@@ -100,3 +100,26 @@ export async function fetchArticles(server, feeds) {
 
   return data.articles;
 }
+
+export async function refreshArticles(server, feeds) {
+  let res;
+  try {
+    res = await fetch(`${server}/api/articles/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feeds }),
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
+
+  if (res.status === 401) throw new TokenExpiredError();
+
+  const data = await res.json();
+  if (data.status !== "ok") {
+    throw new Error(data.message || "Failed to refresh articles");
+  }
+
+  return data.articles;
+}
