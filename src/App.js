@@ -293,7 +293,7 @@ export async function startApp(config) {
 
   function drawSearchBar() {
     const row = term.rows - 1;
-    term.writeLine(row, ` ${term.orange("/")}${term.white(searchQuery)}${term.dim("█")}`);
+    term.writeLine(row, ` ${term.orange("/")}${term.white(searchQuery)}${term.white("█")}`);
   }
 
   function applySearchFilter() {
