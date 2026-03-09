@@ -78,6 +78,7 @@ export async function startApp(config) {
   process.stdin.setEncoding("utf8");
 
   const cleanup = () => {
+    if (spinnerTimer) clearInterval(spinnerTimer);
     term.showCursor();
     term.leaveAltScreen();
     process.stdin.setRawMode(false);
@@ -127,6 +128,7 @@ export async function startApp(config) {
   ];
 
   function drawSplash(message) {
+    stopSpinner();
     term.clearScreen();
     const startRow = Math.max(0, Math.floor((term.rows - LOGO.length) / 2) - 2);
 
@@ -137,16 +139,49 @@ export async function startApp(config) {
 
     const version = "v0.2.1";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
-    term.writeLine(startRow + LOGO.length + 3, " ".repeat(Math.max(0, Math.floor((term.cols - message.length) / 2))) + term.cyan(message));
+
+    const msgRow = startRow + LOGO.length + 3;
+    let frame = 0;
+    const render = () => {
+      const ch = spinnerFrames[frame % spinnerFrames.length];
+      const text = message + " " + ch;
+      term.writeLine(msgRow, " ".repeat(Math.max(0, Math.floor((term.cols - text.length) / 2))) + term.cyan(text));
+      frame++;
+    };
+    render();
+    spinnerTimer = setInterval(render, 100);
+  }
+
+  const spinnerFrames = ["/", "-", "\\", "|"];
+  let spinnerTimer = null;
+
+  function startSpinner(message) {
+    stopSpinner();
+    let frame = 0;
+    const render = () => {
+      const ch = spinnerFrames[frame % spinnerFrames.length];
+      term.writeLine(2, ` ${term.cyan(message + " " + ch)}`);
+      frame++;
+    };
+    term.clearScreen();
+    drawHeader();
+    render();
+    spinnerTimer = setInterval(render, 100);
+  }
+
+  function stopSpinner() {
+    if (spinnerTimer) {
+      clearInterval(spinnerTimer);
+      spinnerTimer = null;
+    }
   }
 
   function drawLoading(message) {
-    term.clearScreen();
-    drawHeader();
-    term.writeLine(2, ` ${term.cyan(message)}`);
+    startSpinner(message);
   }
 
   function drawError() {
+    stopSpinner();
     term.clearScreen();
     drawHeader();
     term.writeLine(2, ` ${term.cyan(`Virhe: ${errorMessage}`)}`);
@@ -338,6 +373,7 @@ export async function startApp(config) {
     selectedIndex = 0;
     scrollOffset = 0;
     screen = "articles";
+    stopSpinner();
     drawArticlesFull();
   }
 
@@ -606,11 +642,15 @@ export async function startApp(config) {
       await new Promise((r) => setTimeout(r, 1500 - elapsed));
     }
 
+    stopSpinner();
     screen = "topics";
     selectedIndex = 0;
     drawTopicsFull();
   } catch (err) {
-    drawLoading(`Virhe: ${err.message}`);
+    stopSpinner();
+    term.clearScreen();
+    drawHeader();
+    term.writeLine(2, ` ${term.cyan(`Virhe: ${err.message}`)}`);
     drawStatusBar("q: quit");
     process.stdin.on("data", (key) => {
       if (key === "q" || key === "\x03") cleanup();
