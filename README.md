@@ -7,10 +7,6 @@
   Browse your feeds, navigate by topic, and open articles in your browser — all from the terminal.
 </p>
 
-<p align="center">
-  <img src="images/PREVIEW.png" alt="Preview" width="800">
-</p>
-
 ## Requirements
 
 - Node.js 18+
@@ -61,7 +57,7 @@ npm start
 ## Keybindings
 
 | Key           | Action                  |
-|---------------|-------------------------|
+| ------------- | ----------------------- |
 | `j` / Down    | Move down               |
 | `k` / Up      | Move up                 |
 | `g`           | Jump to top             |
