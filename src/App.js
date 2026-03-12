@@ -137,7 +137,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.2.1";
+    const version = "v0.2.2";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -305,6 +305,8 @@ export async function startApp(config) {
     const bindings = [
       ["j / ↓", "Seuraava"],
       ["k / ↑", "Edellinen"],
+      ["d", "10 riviä alas"],
+      ["u", "10 riviä ylös"],
       ["g", "Ensimmäinen"],
       ["G", "Viimeinen"],
       ["Enter / l", "Valitse / Avaa"],
@@ -415,6 +417,10 @@ export async function startApp(config) {
       selectedIndex = Math.min(selectedIndex + 1, topics.length - 1);
     } else if (key === "k" || key === "\x1b[A") {
       selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (key === "d") {
+      selectedIndex = Math.min(selectedIndex + 10, topics.length - 1);
+    } else if (key === "u") {
+      selectedIndex = Math.max(selectedIndex - 10, 0);
     } else if (key === "g") {
       selectedIndex = 0;
     } else if (key === "G") {
@@ -462,6 +468,10 @@ export async function startApp(config) {
       selectedIndex = Math.min(selectedIndex + 1, articles.length - 1);
     } else if (key === "k" || key === "\x1b[A") {
       selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (key === "d") {
+      selectedIndex = Math.min(selectedIndex + 10, articles.length - 1);
+    } else if (key === "u") {
+      selectedIndex = Math.max(selectedIndex - 10, 0);
     } else if (key === "g") {
       selectedIndex = 0;
     } else if (key === "G") {
