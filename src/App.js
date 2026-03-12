@@ -1,6 +1,6 @@
 import { term } from "./term.js";
 import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, TokenExpiredError } from "./api.js";
-import { loadCachedToken, saveCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
+import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
 
@@ -210,7 +210,7 @@ export async function startApp(config) {
       drawTopicRow(i);
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: select  ?: help  q: quit");
+    drawStatusBar("j/k: navigate  Enter/l: select  ?: help  L: logout  q: quit");
   }
 
   // --- Article screen ---
@@ -312,6 +312,7 @@ export async function startApp(config) {
       ["r", "Päivitä artikkelit"],
       ["/", "Hae artikkeleita"],
       ["Esc", "Tyhjennä haku"],
+      ["L", "Kirjaudu ulos"],
       ["?", "Näytä ohje"],
       ["Ctrl+C", "Poistu"],
     ];
@@ -379,10 +380,14 @@ export async function startApp(config) {
 
   // --- Re-authentication ---
 
-  async function reauthenticate() {
+  async function reauthenticate(message = "Istunto vanhentunut — kirjaudu uudelleen") {
+    stopSpinner();
+    term.clearScreen();
     term.showCursor();
     term.leaveAltScreen();
-    console.log(term.boldYellow("\n  Istunto vanhentunut — kirjaudu uudelleen\n"));
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+    console.log(term.boldYellow(`\n  ${message}\n`));
     const { email, password } = await promptCredentials();
 
     term.enterAltScreen();
@@ -433,6 +438,10 @@ export async function startApp(config) {
       previousScreen = "topics";
       screen = "help";
       drawHelp();
+      return;
+    } else if (key === "L") {
+      clearCachedToken();
+      cleanup();
       return;
     } else if (key === "q") {
       cleanup();
@@ -596,14 +605,13 @@ export async function startApp(config) {
   });
 
   // Startup — try cached token, prompt for credentials if needed
-  const splashStart = Date.now();
+  let splashStart = Date.now();
 
   try {
     const cachedToken = loadCachedToken();
     let auth = null;
 
     if (cachedToken) {
-      drawSplash("Kirjaudutaan sisään...");
       auth = await verifyToken(config.server, cachedToken);
     }
 
@@ -611,6 +619,8 @@ export async function startApp(config) {
       // Need fresh login — exit alt screen to show prompt
       term.showCursor();
       term.leaveAltScreen();
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
       console.log(term.boldYellow("\n  Juoruankka — Kirjaudu sisään\n"));
       const { email, password } = await promptCredentials();
 
@@ -623,6 +633,7 @@ export async function startApp(config) {
 
       auth = await login(config.server, email, password);
       saveCachedToken(auth.token);
+      splashStart = Date.now();
     }
 
     token = auth.token;

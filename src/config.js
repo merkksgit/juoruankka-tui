@@ -82,4 +82,14 @@ export function saveReadArticle(id) {
   writeFileSync(READ_PATH, JSON.stringify(ids) + "\n", "utf-8");
 }
 
+export function clearCachedToken() {
+  if (!existsSync(CONFIG_PATH)) return;
+  try {
+    const config = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+    delete config.token;
+    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    chmodSync(CONFIG_PATH, 0o600);
+  } catch {}
+}
+
 export { CONFIG_PATH, CONFIG_DIR, DEFAULT_SERVER };
