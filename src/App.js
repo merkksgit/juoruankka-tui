@@ -4,6 +4,10 @@ import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, sa
 import { promptCredentials } from "./prompt.js";
 import open from "open";
 
+function openUrl(url) {
+  open(url.trim()).catch(() => {});
+}
+
 const TOPIC_NAMES = {
   all: "Kaikki",
   paauutiset: "Pääuutiset",
@@ -139,7 +143,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.2.3";
+    const version = "v0.2.4";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -294,7 +298,7 @@ export async function startApp(config) {
       }
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: open  /: search  r: refresh  ?: help  q/h: back");
+    drawStatusBar("j/k: navigate  Enter/l: open  p: preview  /: search  r: refresh  ?: help  q/h: back");
   }
 
   // --- Help screen ---
@@ -312,6 +316,7 @@ export async function startApp(config) {
       ["g", "Ensimmäinen"],
       ["G", "Viimeinen"],
       ["Enter / l", "Valitse / Avaa"],
+      ["p", "Esikatselu"],
       ["q / h", "Takaisin"],
       ["r", "Päivitä artikkelit"],
       ["/", "Hae artikkeleita"],
@@ -327,6 +332,83 @@ export async function startApp(config) {
     }
 
     drawStatusBar("q/?/Esc: back");
+  }
+
+  // --- Preview screen ---
+
+  let previewArticle = null;
+  let previewScrollOffset = 0;
+  let previewLines = [];
+
+  function wrapText(text, maxWidth) {
+    const lines = [];
+    for (const paragraph of text.split("\n")) {
+      if (paragraph.trim() === "") { lines.push(""); continue; }
+      const words = paragraph.split(/\s+/);
+      let line = "";
+      for (const word of words) {
+        if (line.length + word.length + 1 > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = line ? line + " " + word : word;
+        }
+      }
+      if (line) lines.push(line);
+    }
+    return lines;
+  }
+
+  function buildPreviewLines(article) {
+    const maxWidth = Math.min(term.cols - 6, 80);
+    const lines = [];
+
+    lines.push(term.boldYellow(article.title || "Untitled"));
+    lines.push("");
+
+    const meta = [];
+    if (article.source) meta.push(term.blue(article.source));
+    if (article.timestamp) meta.push(term.cyan(relativeTime(article.timestamp)));
+    if (meta.length) lines.push(meta.join(` ${term.dim("│")} `));
+
+    if (article.tags && article.tags.length) {
+      lines.push(term.gray(article.tags.join(", ")));
+    }
+
+    lines.push("");
+    lines.push(term.gray("─".repeat(maxWidth)));
+    lines.push("");
+
+    if (article.description) {
+      const wrapped = wrapText(article.description, maxWidth);
+      for (const line of wrapped) {
+        lines.push(term.white(line));
+      }
+    } else {
+      lines.push(term.gray("Ei kuvausta saatavilla."));
+    }
+
+    lines.push("");
+    lines.push(term.gray("─".repeat(maxWidth)));
+    lines.push("");
+    lines.push(term.cyan(article.url || ""));
+
+    return lines;
+  }
+
+  function drawPreview() {
+    term.clearScreen();
+    drawHeader();
+    term.writeLine(1, "");
+
+    const viewportHeight = term.rows - 4;
+    const visible = previewLines.slice(previewScrollOffset, previewScrollOffset + viewportHeight);
+
+    for (let i = 0; i < viewportHeight; i++) {
+      term.writeLine(2 + i, i < visible.length ? `   ${visible[i]}` : "");
+    }
+
+    drawStatusBar("Enter/l: open in browser  j/k: scroll  q/h: back");
   }
 
   // --- Search bar ---
@@ -505,7 +587,17 @@ export async function startApp(config) {
         readHistory.add(article.id);
         saveReadArticle(article.id);
         drawArticleRow(selectedIndex);
-        open(article.url).catch(() => {});
+        openUrl(article.url);
+      }
+      return;
+    } else if (key === "p") {
+      if (articles[selectedIndex]) {
+        previewArticle = articles[selectedIndex];
+        previewLines = buildPreviewLines(previewArticle);
+        previewScrollOffset = 0;
+        previousScreen = "articles";
+        screen = "preview";
+        drawPreview();
       }
       return;
     } else if (key === "r") {
@@ -606,6 +698,31 @@ export async function startApp(config) {
     }
   }
 
+  function handlePreviewInput(key) {
+    if (key === "\r" || key === "l") {
+      if (previewArticle) {
+        readHistory.add(previewArticle.id);
+        saveReadArticle(previewArticle.id);
+        openUrl(previewArticle.url);
+      }
+      return;
+    } else if (key === "j" || key === "\x1b[B") {
+      const viewportHeight = term.rows - 4;
+      if (previewScrollOffset < previewLines.length - viewportHeight) {
+        previewScrollOffset++;
+        drawPreview();
+      }
+    } else if (key === "k" || key === "\x1b[A") {
+      if (previewScrollOffset > 0) {
+        previewScrollOffset--;
+        drawPreview();
+      }
+    } else if (key === "q" || key === "h" || key === "\x1b") {
+      screen = "articles";
+      drawArticlesFull();
+    }
+  }
+
   function handleErrorInput(key) {
     if (key === "q" || key === "h" || key === "\x1b") {
       screen = "topics";
@@ -625,6 +742,7 @@ export async function startApp(config) {
     if (screen === "topics") handleTopicInput(key);
     else if (screen === "articles") handleArticleInput(key);
     else if (screen === "search") handleSearchInput(key);
+    else if (screen === "preview") handlePreviewInput(key);
     else if (screen === "help") handleHelpInput(key);
     else if (screen === "error") handleErrorInput(key);
   });
@@ -633,6 +751,7 @@ export async function startApp(config) {
   process.stdout.on("resize", () => {
     if (screen === "topics") drawTopicsFull();
     else if (screen === "articles") drawArticlesFull();
+    else if (screen === "preview") drawPreview();
     else if (screen === "help") drawHelp();
     else if (screen === "error") drawError();
   });
