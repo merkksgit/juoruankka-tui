@@ -103,6 +103,8 @@ export async function startApp(config) {
   let selectedTopic = null;
   let searchQuery = "";
   let readHistory = loadReadHistory();
+  const articleCache = new Map();
+  const CACHE_TTL = 10 * 60 * 1000;
 
   // --- Render functions ---
 
@@ -137,7 +139,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.2.2";
+    const version = "v0.2.3";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -351,6 +353,20 @@ export async function startApp(config) {
   // --- Article loading ---
 
   async function loadArticles(topic, forceRefresh = false) {
+    const cached = articleCache.get(topic);
+    if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      allArticles = cached.articles;
+      searchQuery = "";
+      articles = cached.articles;
+      selectedIndex = 0;
+      scrollOffset = 0;
+      screen = "articles";
+      drawArticlesFull();
+      return;
+    }
+
+    if (forceRefresh) articleCache.clear();
+
     screen = "loading";
     drawLoading(forceRefresh ? "Päivitetään syötteitä..." : "Haetaan artikkeleita...");
 
@@ -369,6 +385,8 @@ export async function startApp(config) {
       return true;
     });
     unique.sort((a, b) => b.timestamp - a.timestamp);
+
+    articleCache.set(topic, { articles: unique, timestamp: Date.now() });
 
     allArticles = unique;
     searchQuery = "";
