@@ -447,7 +447,12 @@ export async function startApp(config) {
       return;
     } else if (key === "L") {
       clearCachedToken();
-      cleanup();
+      if (spinnerTimer) clearInterval(spinnerTimer);
+      term.showCursor();
+      term.leaveAltScreen();
+      process.stdin.setRawMode(false);
+      console.log("Logged out successfully.");
+      process.exit(0);
       return;
     } else if (key === "q") {
       cleanup();
