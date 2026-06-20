@@ -1,9 +1,36 @@
 import { term } from "./term.js";
-import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, fetchSaved, fetchLikes, TokenExpiredError } from "./api.js";
+import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, fetchSaved, fetchLikes, checkLatestVersion, TokenExpiredError } from "./api.js";
 import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
 import { spawn } from "child_process";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+// Single source of truth for our version — read from package.json so it only
+// needs bumping in one place.
+const VERSION = (() => {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    return JSON.parse(readFileSync(pkgPath, "utf8")).version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+// Compare dotted numeric versions; true if `remote` is strictly newer than `local`.
+function isNewerVersion(remote, local) {
+  if (!remote || !local) return false;
+  const a = remote.split(".").map((n) => parseInt(n, 10) || 0);
+  const b = local.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
 
 function openUrl(url) {
   open(url.trim()).catch(() => {});
@@ -158,6 +185,15 @@ export async function startApp(config) {
   const articleCache = new Map();
   const CACHE_TTL = 10 * 60 * 1000;
 
+  // Newer version available on GitHub, or null. Filled in the background so the
+  // check never delays startup; the splash and topics screen show it once known.
+  let updateVersion = null;
+  const updateCheck = checkLatestVersion()
+    .then((latest) => {
+      if (isNewerVersion(latest, VERSION)) updateVersion = latest;
+    })
+    .catch(() => {});
+
   // --- Render functions ---
 
   function drawHeader() {
@@ -191,8 +227,12 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.4.2";
-    term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
+    const version = `v${VERSION}`;
+    const versionLine = updateVersion ? `${version}  ·  päivitys saatavilla: v${updateVersion}` : version;
+    const versionText = updateVersion
+      ? term.gray(version) + term.dim("  ·  ") + term.orange(`päivitys saatavilla: v${updateVersion}`)
+      : term.gray(version);
+    term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - versionLine.length) / 2))) + versionText);
 
     const msgRow = startRow + LOGO.length + 3;
     let frame = 0;
@@ -257,7 +297,9 @@ export async function startApp(config) {
   function drawTopicsFull() {
     term.clearScreen();
     drawHeader();
-    term.writeLine(1, "");
+    term.writeLine(1, updateVersion
+      ? ` ${term.orange(`↑ Päivitys saatavilla: v${updateVersion} (nyt v${VERSION}) — git pull`)}`
+      : "");
     term.writeLine(2, ` ${term.boldYellow("Aiheet")}`);
 
     for (let i = 0; i < topics.length; i++) {
@@ -904,6 +946,10 @@ export async function startApp(config) {
     if (elapsed < 1500) {
       await new Promise((r) => setTimeout(r, 1500 - elapsed));
     }
+
+    // Give the background version check a brief moment to land so the topics
+    // screen can show the notice immediately; never block longer than 2s.
+    await Promise.race([updateCheck, new Promise((r) => setTimeout(r, 2000))]);
 
     stopSpinner();
     screen = "topics";

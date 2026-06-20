@@ -149,6 +149,27 @@ export async function fetchLikes(server, token) {
   return data.articles;
 }
 
+// Latest released version, read from package.json on the repo's main branch
+// (the app is installed from GitHub, not npm). Best-effort: any failure —
+// offline, timeout, rate limit, malformed JSON — resolves to null so startup
+// is never blocked or broken by the check.
+const LATEST_VERSION_URL =
+  "https://raw.githubusercontent.com/merkksgit/juoruankka-tui/main/package.json";
+
+export async function checkLatestVersion() {
+  try {
+    const res = await fetch(LATEST_VERSION_URL, {
+      headers: { Accept: "application/json" },
+      signal: timeoutSignal(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.version === "string" ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function refreshArticles(server, feeds) {
   let res;
   try {
