@@ -101,6 +101,48 @@ export async function fetchArticles(server, feeds) {
   return data.articles;
 }
 
+export async function fetchSaved(server, token) {
+  let res;
+  try {
+    res = await fetch(`${server}/api/saved`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
+
+  if (res.status === 401) throw new TokenExpiredError();
+
+  const data = await res.json();
+  if (data.status !== "ok") {
+    throw new Error(data.message || "Failed to fetch saved articles");
+  }
+
+  return data.articles;
+}
+
+export async function fetchLikes(server, token) {
+  let res;
+  try {
+    res = await fetch(`${server}/api/likes`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(),
+    });
+  } catch (err) {
+    wrapFetchError(err);
+  }
+
+  if (res.status === 401) throw new TokenExpiredError();
+
+  const data = await res.json();
+  if (data.status !== "ok") {
+    throw new Error(data.message || "Failed to fetch liked articles");
+  }
+
+  return data.articles;
+}
+
 export async function refreshArticles(server, feeds) {
   let res;
   try {

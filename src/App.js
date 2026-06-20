@@ -1,5 +1,5 @@
 import { term } from "./term.js";
-import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, TokenExpiredError } from "./api.js";
+import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, fetchSaved, fetchLikes, TokenExpiredError } from "./api.js";
 import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
@@ -27,7 +27,12 @@ const TOPIC_NAMES = {
   podcasts: "Podcastit",
   blogs: "Blogit",
   github: "GitHub",
+  saved: "Tallennetut",
+  liked: "Suositut",
 };
+
+// Virtual topics that load from per-user / community endpoints instead of feeds
+const VIRTUAL_TOPICS = ["saved", "liked"];
 
 const TOPIC_ORDER = [
   "all",
@@ -143,7 +148,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.2.4";
+    const version = "v0.3.0";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -450,15 +455,25 @@ export async function startApp(config) {
     if (forceRefresh) articleCache.clear();
 
     screen = "loading";
-    drawLoading(forceRefresh ? "Päivitetään syötteitä..." : "Haetaan artikkeleita...");
 
-    const topicFeeds = topic === "all"
-      ? feeds.filter((f) => f.enabled !== false)
-      : feeds.filter((f) => f.category === topic && f.enabled !== false);
+    let arts;
+    if (topic === "saved") {
+      drawLoading("Haetaan tallennettuja...");
+      arts = await fetchSaved(config.server, token);
+    } else if (topic === "liked") {
+      drawLoading("Haetaan suosituimpia...");
+      arts = await fetchLikes(config.server, token);
+    } else {
+      drawLoading(forceRefresh ? "Päivitetään syötteitä..." : "Haetaan artikkeleita...");
 
-    const feedPayload = topicFeeds.map((f) => ({ url: f.url, name: f.name }));
-    const fetch = forceRefresh ? refreshArticles : fetchArticles;
-    const arts = await fetch(config.server, feedPayload);
+      const topicFeeds = topic === "all"
+        ? feeds.filter((f) => f.enabled !== false)
+        : feeds.filter((f) => f.category === topic && f.enabled !== false);
+
+      const feedPayload = topicFeeds.map((f) => ({ url: f.url, name: f.name }));
+      const fetch = forceRefresh ? refreshArticles : fetchArticles;
+      arts = await fetch(config.server, feedPayload);
+    }
 
     const seen = new Set();
     const unique = arts.filter((a) => {
@@ -466,7 +481,11 @@ export async function startApp(config) {
       seen.add(a.id);
       return true;
     });
-    unique.sort((a, b) => b.timestamp - a.timestamp);
+    // Virtual topics arrive pre-ordered by the server (saved: newest saved first,
+    // liked: most popular first), so only re-sort feed topics by publish time.
+    if (!VIRTUAL_TOPICS.includes(topic)) {
+      unique.sort((a, b) => b.timestamp - a.timestamp);
+    }
 
     articleCache.set(topic, { articles: unique, timestamp: Date.now() });
 
@@ -797,7 +816,7 @@ export async function startApp(config) {
 
     const enabledFeeds = userFeeds.filter((f) => f.enabled !== false);
     const categories = new Set(enabledFeeds.map((f) => f.category).filter(Boolean));
-    topics = ["all", ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t))];
+    topics = ["all", ...TOPIC_ORDER.filter((t) => t !== "all" && categories.has(t)), ...VIRTUAL_TOPICS];
 
     // Keep splash visible for at least 1.5s
     const elapsed = Date.now() - splashStart;

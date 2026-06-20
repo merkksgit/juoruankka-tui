@@ -1,6 +1,6 @@
 {
   "name": "juoruankka-tui",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Terminal UI client for Juoruankka RSS aggregator",
   "main": "index.js",
   "type": "module",
