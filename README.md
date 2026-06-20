@@ -1,14 +1,8 @@
-<p align="center">
-  <img src="images/JUORUANKKA_TUI_LOGO.png" alt="Juoruankka TUI" width="100%">
-</p>
+# Juoruankka TUI
 
-<p align="center">
+<p align="left">
   A terminal UI client for <a href="https://juoruankka.com">Juoruankka</a>, a self-hosted RSS news aggregator.<br>
   Browse your feeds, navigate by topic, and open articles in your browser — all from the terminal.
-</p>
-
-<p align="center">
-  <img src="images/PREVIEW.png" alt="Preview" width="800">
 </p>
 
 ## Requirements
