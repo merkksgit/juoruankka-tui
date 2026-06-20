@@ -3,17 +3,23 @@ import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, fetchSa
 import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
-import { spawn } from "child_process";
-import { readFileSync } from "fs";
+import { spawn, spawnSync } from "child_process";
+import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+
+// Repo root (one level up from src/) — used to read our version and to run the
+// in-app self-update against the right working tree.
+const REPO_DIR = (() => {
+  try { return join(dirname(fileURLToPath(import.meta.url)), ".."); }
+  catch { return process.cwd(); }
+})();
 
 // Single source of truth for our version — read from package.json so it only
 // needs bumping in one place.
 const VERSION = (() => {
   try {
-    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-    return JSON.parse(readFileSync(pkgPath, "utf8")).version || "0.0.0";
+    return JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8")).version || "0.0.0";
   } catch {
     return "0.0.0";
   }
@@ -30,6 +36,39 @@ function isNewerVersion(remote, local) {
     if (x < y) return false;
   }
   return false;
+}
+
+// Self-update: leave the TUI so git/npm output is visible on the normal
+// terminal, pull the latest code, reinstall deps, then exit (the running
+// process can't hot-swap its own modules, so a restart is required).
+// `restoreTerminal` undoes the alt-screen / raw-mode setup before we hand the
+// terminal over to the child processes.
+function runUpdate(restoreTerminal) {
+  restoreTerminal();
+
+  if (!existsSync(join(REPO_DIR, ".git"))) {
+    console.log("\n  Päivitys vaatii git-asennuksen — päivitä manuaalisesti.\n");
+    process.exit(1);
+  }
+
+  console.log("\n  Päivitetään (git pull)...\n");
+  // --ff-only: never create a merge commit. If the tree is dirty or has
+  // diverged, git fails with a clear message instead of leaving a mess.
+  const pull = spawnSync("git", ["-C", REPO_DIR, "pull", "--ff-only"], { stdio: "inherit" });
+  if (pull.status !== 0) {
+    console.log("\n  git pull epäonnistui — selvitä paikalliset muutokset ja yritä uudelleen.\n");
+    process.exit(1);
+  }
+
+  console.log("\n  Asennetaan riippuvuudet (npm install)...\n");
+  const install = spawnSync("npm", ["install"], { cwd: REPO_DIR, stdio: "inherit" });
+  if (install.status !== 0) {
+    console.log("\n  npm install epäonnistui.\n");
+    process.exit(1);
+  }
+
+  console.log("\n  Päivitys valmis — käynnistä sovellus uudelleen.\n");
+  process.exit(0);
 }
 
 function openUrl(url) {
@@ -298,7 +337,7 @@ export async function startApp(config) {
     term.clearScreen();
     drawHeader();
     term.writeLine(1, updateVersion
-      ? ` ${term.orange(`↑ Päivitys saatavilla: v${updateVersion} (nyt v${VERSION}) — git pull`)}`
+      ? ` ${term.orange(`↑ Päivitys saatavilla: v${updateVersion} (nyt v${VERSION}) — paina U`)}`
       : "");
     term.writeLine(2, ` ${term.boldYellow("Aiheet")}`);
 
@@ -306,7 +345,8 @@ export async function startApp(config) {
       drawTopicRow(i);
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: select  ?: help  L: logout  q: quit");
+    const updateHint = updateVersion ? "U: update  " : "";
+    drawStatusBar(`j/k: navigate  Enter/l: select  ${updateHint}?: help  L: logout  q: quit`);
   }
 
   // --- Article screen ---
@@ -418,6 +458,7 @@ export async function startApp(config) {
       ["/", "Hae artikkeleita"],
       ["Esc", "Tyhjennä haku"],
       ["L", "Kirjaudu ulos"],
+      ["U", "Päivitä sovellus (kun saatavilla)"],
       ["?", "Näytä ohje"],
       ["Ctrl+C", "Poistu"],
     ];
@@ -668,6 +709,18 @@ export async function startApp(config) {
       process.stdin.setRawMode(false);
       console.log("Logged out successfully.");
       process.exit(0);
+      return;
+    } else if (key === "U") {
+      if (!updateVersion) {
+        drawStatusBar(`Olet jo ajan tasalla (v${VERSION})`);
+        return;
+      }
+      runUpdate(() => {
+        if (spinnerTimer) clearInterval(spinnerTimer);
+        term.showCursor();
+        term.leaveAltScreen();
+        process.stdin.setRawMode(false);
+      });
       return;
     } else if (key === "q") {
       cleanup();
