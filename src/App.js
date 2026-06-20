@@ -3,9 +3,52 @@ import { login, verifyToken, fetchFeeds, fetchArticles, refreshArticles, fetchSa
 import { loadCachedToken, saveCachedToken, clearCachedToken, loadReadHistory, saveReadArticle } from "./config.js";
 import { promptCredentials } from "./prompt.js";
 import open from "open";
+import { spawn } from "child_process";
 
 function openUrl(url) {
   open(url.trim()).catch(() => {});
+}
+
+// Candidate VLC commands, tried in order. Windows paths come first because the
+// common setup here is WSL launching the Windows build; falls back to a Linux/mac
+// `vlc`/`cvlc` on PATH. Override with a "player" string in config.json.
+const VLC_CANDIDATES = [
+  "/mnt/c/Program Files/VideoLAN/VLC/vlc.exe",
+  "/mnt/c/Program Files (x86)/VideoLAN/VLC/vlc.exe",
+  "vlc",
+  "cvlc",
+];
+
+function launchPlayer(cmd, url) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    // `--` stops option parsing so a feed-supplied URL can't smuggle player flags.
+    const child = spawn(cmd, ["--", url], { detached: true, stdio: "ignore" });
+    child.once("error", (err) => {
+      if (!settled) { settled = true; reject(err); }
+    });
+    // ENOENT fires asynchronously; if no error after a short grace period the
+    // process started, so detach and let it run independently of the TUI.
+    setTimeout(() => {
+      if (!settled) { settled = true; child.unref(); resolve(); }
+    }, 200);
+  });
+}
+
+async function openInVlc(audioUrl, config) {
+  // audioUrl comes from untrusted RSS feeds — only allow real http(s) URLs so a
+  // feed can't point the player at a local file or inject an argv flag.
+  const url = (audioUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) return false;
+
+  const candidates = config.player ? [config.player] : VLC_CANDIDATES;
+  for (const cmd of candidates) {
+    try {
+      await launchPlayer(cmd, url);
+      return true;
+    } catch {}
+  }
+  return false;
 }
 
 const TOPIC_NAMES = {
@@ -28,7 +71,7 @@ const TOPIC_NAMES = {
   blogs: "Blogit",
   github: "GitHub",
   saved: "Tallennetut",
-  liked: "Suositut",
+  liked: "Yhteisön tykätyt",
 };
 
 // Virtual topics that load from per-user / community endpoints instead of feeds
@@ -148,7 +191,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.3.0";
+    const version = "v0.4.0";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -303,7 +346,7 @@ export async function startApp(config) {
       }
     }
 
-    drawStatusBar("j/k: navigate  Enter/l: open  p: preview  /: search  r: refresh  ?: help  q/h: back");
+    drawStatusBar("j/k: navigate  Enter/l: open  v: vlc  p: preview  /: search  r: refresh  ?: help  q/h: back");
   }
 
   // --- Help screen ---
@@ -321,6 +364,7 @@ export async function startApp(config) {
       ["g", "Ensimmäinen"],
       ["G", "Viimeinen"],
       ["Enter / l", "Valitse / Avaa"],
+      ["v", "Toista podcast VLC:ssä"],
       ["p", "Esikatselu"],
       ["q / h", "Takaisin"],
       ["r", "Päivitä artikkelit"],
@@ -413,7 +457,7 @@ export async function startApp(config) {
       term.writeLine(2 + i, i < visible.length ? `   ${visible[i]}` : "");
     }
 
-    drawStatusBar("Enter/l: open in browser  j/k: scroll  q/h: back");
+    drawStatusBar("Enter/l: open in browser  v: vlc  j/k: scroll  q/h: back");
   }
 
   // --- Search bar ---
@@ -619,6 +663,18 @@ export async function startApp(config) {
         drawPreview();
       }
       return;
+    } else if (key === "v") {
+      const article = articles[selectedIndex];
+      if (!article) return;
+      if (!article.audioUrl) {
+        drawStatusBar("Tämä ei ole podcast-jakso");
+        return;
+      }
+      drawStatusBar("Avataan VLC:ssä...");
+      openInVlc(article.audioUrl, config).then((ok) => {
+        if (!ok) drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
+      });
+      return;
     } else if (key === "r") {
       loadArticles(selectedTopic, true).catch((err) => {
         if (err instanceof TokenExpiredError) {
@@ -724,6 +780,17 @@ export async function startApp(config) {
         saveReadArticle(previewArticle.id);
         openUrl(previewArticle.url);
       }
+      return;
+    } else if (key === "v") {
+      if (!previewArticle) return;
+      if (!previewArticle.audioUrl) {
+        drawStatusBar("Tämä ei ole podcast-jakso");
+        return;
+      }
+      drawStatusBar("Avataan VLC:ssä...");
+      openInVlc(previewArticle.audioUrl, config).then((ok) => {
+        if (!ok) drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
+      });
       return;
     } else if (key === "j" || key === "\x1b[B") {
       const viewportHeight = term.rows - 4;
