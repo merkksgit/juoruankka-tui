@@ -191,7 +191,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.4.1";
+    const version = "v0.4.2";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -350,7 +350,8 @@ export async function startApp(config) {
   }
 
   function drawArticlesStatusBar() {
-    drawStatusBar("j/k: navigate  Enter/l: open  v: vlc  p: preview  /: search  r: refresh  ?: help  q/h: back");
+    const vlc = selectedTopic === "podcasts" ? "v: vlc  " : "";
+    drawStatusBar(`j/k: navigate  Enter/l: open  ${vlc}p: preview  /: search  r: refresh  ?: help  q/h: back`);
   }
 
   // --- Help screen ---
@@ -465,7 +466,8 @@ export async function startApp(config) {
   }
 
   function drawPreviewStatusBar() {
-    drawStatusBar("Enter/l: open in browser  v: vlc  j/k: scroll  q/h: back");
+    const vlc = selectedTopic === "podcasts" ? "v: vlc  " : "";
+    drawStatusBar(`Enter/l: open in browser  ${vlc}j/k: scroll  q/h: back`);
   }
 
   // --- Search bar ---

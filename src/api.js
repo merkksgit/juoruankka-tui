@@ -1,4 +1,10 @@
+// Auth/feed-list calls are cheap and should fail fast. Article fetches can be
+// slow on a cold cache: the backend fetches each missing feed live with a 25s
+// per-feed timeout, batched. A refresh clears the whole cache, so every feed is
+// cold — give it the most headroom.
 const TIMEOUT = 15000;
+const ARTICLES_TIMEOUT = 30000;
+const REFRESH_TIMEOUT = 45000;
 
 export class TokenExpiredError extends Error {
   constructor() {
@@ -7,8 +13,8 @@ export class TokenExpiredError extends Error {
   }
 }
 
-function timeoutSignal() {
-  return AbortSignal.timeout(TIMEOUT);
+function timeoutSignal(ms = TIMEOUT) {
+  return AbortSignal.timeout(ms);
 }
 
 function wrapFetchError(err) {
@@ -85,7 +91,7 @@ export async function fetchArticles(server, feeds) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feeds }),
-      signal: timeoutSignal(),
+      signal: timeoutSignal(ARTICLES_TIMEOUT),
     });
   } catch (err) {
     wrapFetchError(err);
@@ -150,7 +156,7 @@ export async function refreshArticles(server, feeds) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feeds }),
-      signal: timeoutSignal(),
+      signal: timeoutSignal(REFRESH_TIMEOUT),
     });
   } catch (err) {
     wrapFetchError(err);
