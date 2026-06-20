@@ -1,10 +1,14 @@
 <p align="center">
-  <img src="images/JUORUANKKA_TUI_LOGO.png" alt="Juoruankka TUI" width="800">
+  <img src="images/JUORUANKKA_TUI_LOGO.png" alt="Juoruankka TUI" width="100%">
 </p>
 
 <p align="center">
   A terminal UI client for <a href="https://juoruankka.com">Juoruankka</a>, a self-hosted RSS news aggregator.<br>
   Browse your feeds, navigate by topic, and open articles in your browser — all from the terminal.
+</p>
+
+<p align="center">
+  <img src="images/PREVIEW.png" alt="Preview" width="800">
 </p>
 
 ## Requirements
@@ -17,7 +21,7 @@
 ### Option 1: Install globally from source
 
 ```bash
-git clone https://github.com/yourusername/juoruankka-tui.git
+git clone https://github.com/merkksgit/juoruankka-tui.git
 cd juoruankka-tui
 npm install
 npm link
@@ -28,7 +32,7 @@ This makes the `juoruankka` command available globally. To uninstall: `npm unlin
 ### Option 2: Run without installing globally
 
 ```bash
-git clone https://github.com/yourusername/juoruankka-tui.git
+git clone https://github.com/merkksgit/juoruankka-tui.git
 cd juoruankka-tui
 npm install
 npm start
@@ -84,10 +88,24 @@ The TUI connects to the Juoruankka API using credentials from the config file. O
 
 - Pure Node.js with no frameworks -- uses raw ANSI escape sequences for rendering
 - Alternate screen buffer for clean terminal state on exit
+- Differential rendering (only changed rows are redrawn) for flicker-free navigation
 - Single runtime dependency: `open` (for launching URLs in browser)
 - Articles are deduplicated across feeds to prevent repeated entries
 - Read article tracking persisted locally
 - 15s fetch timeouts with automatic token expiry detection
+
+## Project Structure
+
+```
+├── index.js          # Entry point, config loading
+├── package.json
+├── src/
+│   ├── App.js        # Main app logic, screens, input handling
+│   ├── api.js        # API client (login, feeds, articles)
+│   ├── config.js     # Config file management (~/.config/juoruankka-tui/)
+│   ├── prompt.js     # Interactive credential prompts
+│   └── term.js       # ANSI terminal helpers
+```
 
 ## License
 
