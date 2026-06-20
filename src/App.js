@@ -191,7 +191,7 @@ export async function startApp(config) {
       term.writeLine(startRow + i, " ".repeat(pad) + term.yellow(LOGO[i]));
     }
 
-    const version = "v0.4.0";
+    const version = "v0.4.1";
     term.writeLine(startRow + LOGO.length + 1, " ".repeat(Math.max(0, Math.floor((term.cols - version.length) / 2))) + term.gray(version));
 
     const msgRow = startRow + LOGO.length + 3;
@@ -346,6 +346,10 @@ export async function startApp(config) {
       }
     }
 
+    drawArticlesStatusBar();
+  }
+
+  function drawArticlesStatusBar() {
     drawStatusBar("j/k: navigate  Enter/l: open  v: vlc  p: preview  /: search  r: refresh  ?: help  q/h: back");
   }
 
@@ -457,6 +461,10 @@ export async function startApp(config) {
       term.writeLine(2 + i, i < visible.length ? `   ${visible[i]}` : "");
     }
 
+    drawPreviewStatusBar();
+  }
+
+  function drawPreviewStatusBar() {
     drawStatusBar("Enter/l: open in browser  v: vlc  j/k: scroll  q/h: back");
   }
 
@@ -672,7 +680,9 @@ export async function startApp(config) {
       }
       drawStatusBar("Avataan VLC:ssä...");
       openInVlc(article.audioUrl, config).then((ok) => {
-        if (!ok) drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
+        if (screen !== "articles") return;
+        if (ok) drawArticlesStatusBar();
+        else drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
       });
       return;
     } else if (key === "r") {
@@ -789,7 +799,9 @@ export async function startApp(config) {
       }
       drawStatusBar("Avataan VLC:ssä...");
       openInVlc(previewArticle.audioUrl, config).then((ok) => {
-        if (!ok) drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
+        if (screen !== "preview") return;
+        if (ok) drawPreviewStatusBar();
+        else drawStatusBar('VLC:n avaaminen epäonnistui — aseta "player" config.json:iin');
       });
       return;
     } else if (key === "j" || key === "\x1b[B") {
